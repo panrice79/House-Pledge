@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>HOUSE PLEDGE</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  :root{ --green:#9be89b; --amber:#e8d49b; }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{width:100%;height:100%;background:#000;overflow:hidden;font-family:'Courier New',monospace;user-select:none;}
+  #game-container{position:absolute;inset:0;}
+  #game-container canvas{
+    width:100%;height:100%;
+    image-rendering:pixelated;image-rendering:crisp-edges;display:block;
+  }
+
+  /* ---------- VHS OVERLAY ---------- */
+  #vhs{position:absolute;inset:0;pointer-events:none;z-index:40;}
+  #vhs .scanlines{
+    position:absolute;inset:0;
+    background:repeating-linear-gradient(
+      to bottom,
+      rgba(0,0,0,0) 0px, rgba(0,0,0,0) 2px,
+      rgba(0,0,0,0.12) 3px, rgba(0,0,0,0.12) 4px);
+    mix-blend-mode:multiply;
+  }
+  #vhs .vignette{
+    position:absolute;inset:0;
+    background:radial-gradient(ellipse at center, rgba(0,0,0,0) 58%, rgba(0,0,0,0.5) 100%);
+  }
+  #noise-canvas{position:absolute;inset:0;width:100%;height:100%;opacity:0.035;}
+  #vhs .tracking{
+    position:absolute;left:0;right:0;height:46px;top:-60px;
+    background:linear-gradient(to bottom, rgba(255,255,255,0) 0%, rgba(255,255,255,0.05) 45%, rgba(180,180,255,0.08) 50%, rgba(255,255,255,0.05) 55%, rgba(255,255,255,0) 100%);
+    animation:tracking 13s linear infinite;
+  }
+  @keyframes tracking{ 0%{top:-8%;} 100%{top:108%;} }
+  #vhs-stamp{
+    position:absolute;top:22px;left:28px;
+    color:rgba(255,255,255,0.8);
+    font-size:16px;letter-spacing:2px;
+    text-shadow:1px 0 rgba(255,0,60,0.45), -1px 0 rgba(0,180,255,0.45), 0 0 6px rgba(255,255,255,0.3);
+    z-index:41;pointer-events:none;line-height:1.7;
+  }
+
+  /* ---------- HUD ---------- */
+  #hud{position:absolute;inset:0;pointer-events:none;z-index:30;}
+  #objective{
+    position:absolute;top:26px;right:30px;max-width:340px;text-align:right;
+    color:rgba(255,255,255,0.78);font-size:14px;letter-spacing:1px;
+    text-shadow:0 0 5px rgba(0,0,0,0.9), 1px 0 rgba(255,0,60,0.25);
+    opacity:0;transition:opacity .8s;
+  }
+  #objective .tag{color:var(--amber);font-size:11px;letter-spacing:3px;}
+  #interact-prompt{
+    position:absolute;left:50%;top:58%;transform:translateX(-50%);
+    color:rgba(255,255,255,0.92);font-size:15px;letter-spacing:1px;
+    text-shadow:0 0 8px #000, 0 0 3px #000;opacity:0;transition:opacity .15s;
+  }
+  #interact-prompt b{color:var(--amber);}
+  #crosshair{
+    position:absolute;left:50%;top:50%;width:4px;height:4px;margin:-2px 0 0 -2px;
+    background:rgba(255,255,255,0.5);border-radius:50%;
+  }
+  #stamina{
+    position:absolute;bottom:26px;left:30px;width:130px;height:5px;
+    background:rgba(255,255,255,0.12);opacity:0;transition:opacity .5s;
+  }
+  #stamina .fill{height:100%;width:100%;background:rgba(255,255,255,0.55);}
+
+  /* ---------- NARRATION (dimmed, frozen) ---------- */
+  #nar-dim{
+    position:absolute;inset:0;background:rgba(0,0,0,0.62);z-index:33;
+    opacity:0;transition:opacity .8s;pointer-events:none;
+  }
+  #narration{
+    position:absolute;left:50%;top:46%;transform:translate(-50%,-50%);
+    width:min(820px,86%);text-align:center;
+    color:#e6e6e6;font-style:italic;font-size:20px;line-height:1.7;
+    text-shadow:0 0 9px #000, 0 0 2px #000, 1.5px 0 rgba(255,0,60,0.3), -1.5px 0 rgba(0,180,255,0.3);
+    opacity:0;transition:opacity .6s;pointer-events:none;z-index:65;
+  }
+
+  /* ---------- DIALOGUE — free-floating VHS text ---------- */
+  #dialogue{
+    position:absolute;left:50%;bottom:9%;transform:translateX(-50%);
+    width:min(820px,90%);text-align:center;
+    display:none;z-index:36;pointer-events:none;
+  }
+  #dialogue .speaker{
+    color:var(--amber);letter-spacing:4px;font-size:13px;margin-bottom:8px;
+    text-shadow:0 0 7px #000, 1px 0 rgba(255,0,60,0.4);
+  }
+  #dialogue .line{
+    min-height:26px;color:#efefef;font-size:19px;line-height:1.55;
+    text-shadow:0 0 8px #000, 0 0 3px #000, 1.5px 0 rgba(255,0,60,0.28), -1.5px 0 rgba(0,180,255,0.28);
+  }
+  #dialogue .hint{margin-top:9px;font-size:10px;color:rgba(255,255,255,0.35);letter-spacing:2px;}
+  #choices{margin-top:14px;display:none;}
+  #choices .choice{
+    padding:6px 10px;margin-top:4px;color:#bbb;cursor:pointer;font-size:16px;
+    pointer-events:auto;text-shadow:0 0 6px #000, 0 0 2px #000;
+  }
+  #choices .choice:hover{color:#fff;text-decoration:underline;}
+
+  /* ---------- PHONE ---------- */
+  #phone{
+    position:absolute;right:-360px;bottom:30px;width:320px;height:600px;
+    background:#0c0c0e;border:10px solid #1c1c20;border-radius:30px;
+    z-index:50;transition:right .35s ease;box-shadow:0 0 40px rgba(0,0,0,0.8);
+    display:flex;flex-direction:column;overflow:hidden;
+  }
+  #phone.open{right:26px;}
+  #phone .statusbar{
+    padding:10px 16px 6px;color:#888;font-size:11px;display:flex;justify-content:space-between;
+    border-bottom:1px solid #1a1a1e;
+  }
+  #phone .ph-header{
+    padding:10px 14px;color:#eee;font-size:14px;letter-spacing:1px;border-bottom:1px solid #1a1a1e;
+    display:flex;align-items:center;gap:10px;
+  }
+  #phone .ph-back{color:#5b8ad6;cursor:pointer;font-size:13px;}
+  #phone .ph-body{flex:1;overflow-y:auto;padding:8px 10px;}
+  #phone .thread-item{
+    padding:12px 10px;border-bottom:1px solid #17171b;cursor:pointer;color:#ccc;font-size:14px;
+    display:flex;justify-content:space-between;align-items:center;
+  }
+  #phone .thread-item:hover{background:#141418;}
+  #phone .thread-item .preview{color:#666;font-size:11px;margin-top:3px;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  #phone .badge{background:#3478f6;color:#fff;border-radius:9px;font-size:10px;padding:2px 7px;}
+  #phone .msg-row{display:flex;align-items:flex-end;gap:7px;margin:5px 0;clear:both;}
+  #phone .msg-row.me{flex-direction:row-reverse;}
+  #phone .avatar{
+    width:26px;height:26px;border-radius:50%;flex-shrink:0;
+    color:#fff;font-size:12px;font-weight:bold;display:flex;align-items:center;justify-content:center;
+    font-family:Helvetica,Arial,sans-serif;
+  }
+  #phone .msg-col{max-width:75%;display:flex;flex-direction:column;}
+  #phone .sender{color:#666;font-size:10px;margin:0 0 2px 6px;font-family:Helvetica,Arial,sans-serif;}
+  #phone .msg{padding:8px 12px;border-radius:14px;font-size:13.5px;line-height:1.35;font-family:Helvetica,Arial,sans-serif;}
+  #phone .msg.them{background:#26262c;color:#eee;border-bottom-left-radius:4px;}
+  #phone .msg.me{background:#3478f6;color:#fff;border-bottom-right-radius:4px;}
+  #phone .msg.sys{background:none;color:#555;text-align:center;font-size:10px;font-family:'Courier New',monospace;}
+  #phone .reply-row{padding:8px;border-top:1px solid #1a1a1e;}
+  #phone .reply-opt{
+    border:1px solid #3478f6;color:#5b8ad6;border-radius:16px;padding:7px 12px;margin:4px 0;
+    font-size:12.5px;cursor:pointer;font-family:Helvetica,Arial,sans-serif;
+  }
+  #phone .reply-opt:hover{background:#3478f6;color:#fff;}
+  #phone-hint{
+    position:absolute;bottom:30px;right:30px;color:rgba(255,255,255,0.65);font-size:12px;
+    letter-spacing:1px;z-index:31;text-shadow:0 0 5px #000;opacity:0;transition:opacity .5s;
+  }
+  #notif{
+    position:absolute;top:70px;right:30px;width:280px;background:rgba(18,18,22,0.95);
+    border:1px solid #2a2a30;border-radius:12px;padding:11px 14px;z-index:51;
+    transform:translateY(-12px);opacity:0;transition:all .3s;pointer-events:none;
+  }
+  #notif.show{transform:translateY(0);opacity:1;}
+  #notif .n-from{color:#fff;font-size:12px;font-weight:bold;font-family:Helvetica,Arial,sans-serif;}
+  #notif .n-text{color:#aaa;font-size:12px;margin-top:3px;font-family:Helvetica,Arial,sans-serif;}
+
+  /* ---------- FLASH (hits) ---------- */
+  #flash{position:absolute;inset:0;background:rgba(160,10,10,0.45);z-index:55;opacity:0;pointer-events:none;}
+
+  /* ---------- FADES / CARDS ---------- */
+  #fade{position:absolute;inset:0;background:#000;z-index:60;opacity:1;transition:opacity 1.2s;pointer-events:none;}
+  #chapter-card{
+    position:absolute;inset:0;background:#000;z-index:61;display:flex;align-items:center;justify-content:center;
+    flex-direction:column;opacity:0;transition:opacity 1s;pointer-events:none;
+  }
+  #chapter-card .c-when{color:#777;font-size:15px;letter-spacing:4px;margin-bottom:14px;}
+  #chapter-card .c-title{color:#ddd;font-size:30px;letter-spacing:6px;}
+
+  /* ---------- PAUSE ---------- */
+  #pause{
+    position:absolute;inset:0;background:rgba(0,0,0,0.82);z-index:68;display:none;
+    align-items:center;justify-content:center;flex-direction:column;
+  }
+  #pause h2{color:#ccc;font-size:26px;letter-spacing:10px;font-weight:normal;
+    text-shadow:2px 0 rgba(255,0,60,0.4),-2px 0 rgba(0,180,255,0.4);}
+  #pause .p-btn{
+    margin-top:22px;color:#aaa;font-size:15px;letter-spacing:3px;border:1px solid #444;
+    padding:10px 38px;cursor:pointer;transition:all .25s;
+  }
+  #pause .p-btn:hover{background:#1a1a1a;color:#fff;border-color:#888;}
+  #pause .p-controls{color:#444;font-size:11px;letter-spacing:2px;margin-top:34px;line-height:2;text-align:center;}
+
+  /* ---------- TITLE ---------- */
+  #title-screen{
+    position:absolute;inset:0;background:#050505;z-index:70;display:flex;align-items:center;justify-content:center;
+    flex-direction:column;transition:opacity 1.5s;
+  }
+  #title-screen h1{
+    color:#d6d6d6;font-size:56px;letter-spacing:14px;font-weight:normal;
+    text-shadow:2px 0 rgba(255,0,60,0.5), -2px 0 rgba(0,180,255,0.5), 0 0 22px rgba(255,255,255,0.25);
+  }
+  #title-screen .sub{color:#5d7a5d;font-size:14px;letter-spacing:5px;margin-top:14px;}
+  #title-screen .warn{color:#666;font-size:12.5px;max-width:520px;text-align:center;line-height:1.7;margin-top:42px;letter-spacing:1px;}
+  #title-screen .start{
+    margin-top:46px;color:#bbb;font-size:16px;letter-spacing:3px;border:1px solid #444;
+    padding:12px 34px;cursor:pointer;transition:all .3s;
+  }
+  #title-screen .start:hover{background:#1a1a1a;color:#fff;border-color:#888;}
+  #title-screen .controls{color:#444;font-size:11px;letter-spacing:2px;margin-top:30px;line-height:2;text-align:center;}
+
+  #end-screen{
+    position:absolute;inset:0;background:#000;z-index:71;display:none;align-items:center;justify-content:center;
+    flex-direction:column;text-align:center;padding:30px;
+  }
+  #end-screen .e-text{color:#999;font-size:16px;line-height:2.1;max-width:640px;font-style:italic;}
+  #end-screen .e-title{color:#ccc;font-size:34px;letter-spacing:12px;margin-top:50px;text-shadow:2px 0 rgba(255,0,60,0.4),-2px 0 rgba(0,180,255,0.4);}
+  #end-screen .e-note{color:#444;font-size:12px;margin-top:40px;letter-spacing:1px;line-height:1.8;}
+</style>
+</head>
+<body>
+<div id="game-container"></div>
+
+<div id="vhs">
+  <canvas id="noise-canvas"></canvas>
+  <div class="scanlines"></div>
+  <div class="tracking"></div>
+  <div class="vignette"></div>
+</div>
+<div id="vhs-stamp">
+  <span class="play">PLAY &#9654;</span><br>
+  <span id="stamp-time">8:14 PM</span><br>
+  <span id="stamp-date">FEB 21 2025</span>
+</div>
+
+<div id="hud">
+  <div id="crosshair"></div>
+  <div id="objective"><div class="tag">OBJECTIVE</div><div id="objective-text"></div></div>
+  <div id="interact-prompt"><b>[E]</b> <span id="interact-text">Interact</span></div>
+  <div id="stamina"><div class="fill"></div></div>
+  <div id="phone-hint">[TAB] PHONE</div>
+</div>
+
+<div id="nar-dim"></div>
+<div id="narration"></div>
+
+<div id="dialogue">
+  <div class="speaker" id="dlg-speaker"></div>
+  <div class="line" id="dlg-line"></div>
+  <div class="hint" id="dlg-hint">[SPACE] CONTINUE</div>
+  <div id="choices"></div>
+</div>
+
+<div id="phone">
+  <div class="statusbar"><span>Verizon</span><span id="ph-clock">8:14 PM</span><span>&#9889;62%</span></div>
+  <div class="ph-header"><span class="ph-back" id="ph-back" style="display:none">&#10094; Back</span><span id="ph-title">Messages</span></div>
+  <div class="ph-body" id="ph-body"></div>
+  <div class="reply-row" id="ph-replies" style="display:none"></div>
+</div>
+<div id="notif"><div class="n-from" id="n-from"></div><div class="n-text" id="n-text"></div></div>
+
+<div id="flash"></div>
+<div id="fade"></div>
+<div id="chapter-card"><div class="c-when" id="card-when"></div><div class="c-title" id="card-title"></div></div>
+
+<div id="pause">
+  <h2>PAUSED</h2>
+  <div class="p-btn" id="btn-resume">RESUME</div>
+  <div class="p-btn" id="btn-restart">RESTART</div>
+  <div class="p-controls">WASD MOVE &middot; SHIFT SPRINT &middot; E INTERACT &middot; TAB PHONE<br>SPACE ADVANCE &middot; 1-4 CHOICES &middot; ESC PAUSE</div>
+</div>
+
+<div id="title-screen">
+  <h1>HOUSE PLEDGE</h1>
+  <div class="sub">WATERFORD UNIVERSITY &middot; SPRING SEMESTER</div>
+  <div class="warn">
+    This story depicts hazing, coerced drinking, sleep deprivation and a student death.
+    It contains no supernatural elements. Events like these happen at real universities every year.<br><br>
+    If you or someone you know is being hazed, you can report it anonymously at 1-888-NOT-HAZE.
+  </div>
+  <div class="start" id="btn-start">PRESS START</div>
+  <div class="controls">WASD MOVE &middot; MOUSE LOOK &middot; SHIFT SPRINT &middot; E INTERACT<br>TAB PHONE &middot; SPACE ADVANCE TEXT &middot; ESC PAUSE</div>
+</div>
+
+<div id="end-screen">
+  <div class="e-text" id="end-text"></div>
+  <div class="e-title">HOUSE PLEDGE</div>
+  <div class="e-note" id="end-note"></div>
+</div>
+
+<script src="https://unpkg.com/three@0.152.2/build/three.min.js"></script>
+<script src="js/audio.js?v=2"></script>
+<script src="js/world.js?v=2"></script>
+<script src="js/engine.js?v=2"></script>
+<script src="js/story.js?v=2"></script>
+</body>
+</html>
